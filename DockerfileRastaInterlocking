@@ -7,4 +7,3 @@ COPY rasta-protocol/build/  CRasta
 ENV LD_LIBRARY_PATH="/usr/src/app/CRasta/bin/lib:/librasta.so/"
 WORKDIR /usr/src/app/CRasta/bin/exe/examples/
 CMD ./interlocking
-#CMD tail -f /dev/null

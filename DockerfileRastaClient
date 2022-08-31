@@ -1,0 +1,10 @@
+FROM ubuntu:jammy
+
+WORKDIR /usr/src/app
+
+COPY rasta-protocol/build/  CRasta
+
+ENV LD_LIBRARY_PATH="/usr/src/app/CRasta/bin/lib:/librasta.so/"
+WORKDIR /usr/src/app/CRasta/bin/exe/examples/
+CMD ./point
+#CMD tail -f /dev/null

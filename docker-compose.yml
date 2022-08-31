@@ -4,7 +4,7 @@ services:
   sender_rasta:
     build:
       context: .
-      dockerfile: ./DockerfileRasta
+      dockerfile: ./${DOCKERFILE_RASTA}
     container_name: sender_rasta
     volumes:
       - filebeatV:/usr/src/app/CRasta/logs
@@ -16,7 +16,7 @@ services:
     container_name: object_controller
     build:
       context: .
-      dockerfile: ./DockerfileOC
+      dockerfile: ./${DOCKERFILE_OC}
     stdin_open: true
     tty: true
     environment:
