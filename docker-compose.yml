@@ -4,7 +4,7 @@ services:
   sender_rasta:
     build:
       context: .
-      dockerfile: ./${DOCKERFILE_RASTA}
+      dockerfile: ./${DOCKERFILE_RASTA:-DockerfileRastaClient}
     container_name: sender_rasta
     volumes:
       - filebeatV:/usr/src/app/CRasta/logs
@@ -16,7 +16,7 @@ services:
     container_name: object_controller
     build:
       context: .
-      dockerfile: ./${DOCKERFILE_OC}
+      dockerfile: ./${DOCKERFILE_OC:-DockerfileOCClient}
     stdin_open: true
     tty: true
     environment:
@@ -32,7 +32,7 @@ services:
     # Need to override user so we can access the log files, and docker.sock
     user: root
     volumes:
-      - /home/vagrant/rasta/filebeat/filebeatconfig.yml:/usr/share/filebeat/filebeat.yml
+      - /home/vagrant/mockOC/filebeat/filebeatconfig.yml:/usr/share/filebeat/filebeat.yml
       - filebeatV:/usr/share/filebeat/data
       - /var/run/docker.sock:/var/run/docker.sock
       # This is needed for filebeat to load container log path as specified in filebeat.yml
