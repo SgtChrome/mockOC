@@ -8,6 +8,8 @@ from datetime import datetime
 from time import sleep
 import yaml
 
+import shortuuid
+
 RASTAIP, RASTAPORT = "sender_rasta", 20002
 HOST, RECEIVERPORT = "object_controller", 20001
 #RASTAIP, RASTAPORT = "localhost", 20002
@@ -43,7 +45,7 @@ class RaSTA:
 
 class Interlocking():
     def __init__(self, clients) -> None:
-        self.clients = {k:OC(v) for k,v in clients.items()}
+        self.clients = {k['name']:OC(k) for k in clients}
 
 
 class OC(RaSTA):
@@ -52,6 +54,9 @@ class OC(RaSTA):
         self.connection = False
         self.state = None
 
+
+def getOrderID():
+    return shortuuid.uuid()
 
 class MyUDPHandler(socketserver.BaseRequestHandler):
     """
@@ -83,9 +88,11 @@ class MyUDPHandler(socketserver.BaseRequestHandler):
                         data = client.split(',')
                         inst.clients[data[0]].connection = bool(data[1])
                         print(client)
+        else:
+            orderID, message = received[3].split('-')
 
         # socket.sendto(str.encode(message), (RASTAIP, RASTAPORT))
-        # 0/1 Message/Internal; RastaID_Sender; RastaID_Receiver; message
+        # 0/1 Message/Internal; RastaID_Sender; RastaID_Receiver; orderId - message
 
 
 class ThreadedUDPServer(socketserver.ThreadingMixIn, MyUDPHandler):
@@ -126,9 +133,9 @@ if __name__ == "__main__":
     #server_thread.join()
 
     while(True):
-        sendOrder(UDPClientSocket, "0;%s;%s;left" % (inst.clients['interlocking0'].rastaID, inst.clients['switch1'].rastaID))
+        sendOrder(UDPClientSocket, "0;%s;%s;%s-left" % (inst.clients['interlocking'].rastaID, inst.clients['switch1'].rastaID, getOrderID()))
         sleep(5)
-        sendOrder(UDPClientSocket, "0;%s;%s;right" % (inst.clients['interlocking0'].rastaID, inst.clients['switch1'].rastaID))
+        sendOrder(UDPClientSocket, "0;%s;%s;%s-right" % (inst.clients['interlocking'].rastaID, inst.clients['switch1'].rastaID, getOrderID()))
         sleep(5)
 
     """ while(True):

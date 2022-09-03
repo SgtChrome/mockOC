@@ -37,19 +37,20 @@ class MyUDPHandler(socketserver.BaseRequestHandler):
 
         # 0/1 Message/Internal; RastaID_sender; RastaID_Receiver; message
         data = data.decode("utf-8").split(";")
-        print(data)
 
-        match data[2]:
-            case 'left':
-                sendMessage(data[1], 'Received')
-                sleep(SWITCHING_TIME)
-                sendMessage(data[1], 'Position:left')
-            case 'right':
-                sendMessage(data[1], 'Received')
-                sleep(SWITCHING_TIME)
-                sendMessage(data[1], 'Position:right')
-            case 'startup':
-                sendMessage(data[1], 'Startup confirmed')
+        if data[0] == '1':
+            orderID, message = data[3].split('-')
+            match message:
+                case 'left':
+                    sendMessage(data[1], orderID + '-Received')
+                    sleep(SWITCHING_TIME)
+                    sendMessage(data[1], orderID + '-Position:left')
+                case 'right':
+                    sendMessage(data[1], orderID + '-Received')
+                    sleep(SWITCHING_TIME)
+                    sendMessage(data[1], orderID + '-Position:right')
+                case 'startup':
+                    sendMessage(data[1], 'startup-startup confirmed')
 
 
 if __name__ == "__main__":
