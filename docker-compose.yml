@@ -46,6 +46,7 @@ services:
       #- KIBANA_HOST=${KIBANA_HOST:}
       - ELASTICSEARCH_USERNAME=${ELASTICSEARCH_USERNAME}
       - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD}
+      - LOGSTASH_HOST=${LOGSTASH_HOST}
     # disable strict permission checks
     command: ["--strict.perms=false"]
 

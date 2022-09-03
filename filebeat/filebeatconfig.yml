@@ -39,10 +39,13 @@ processors:
     netinfo.enabled: true
 
 #========================== Elasticsearch output ===============================
-output.elasticsearch:
-  hosts: ["${ELASTICSEARCH_HOST}:9200"]
-  username: ${ELASTICSEARCH_USERNAME}
-  password: ${ELASTICSEARCH_PASSWORD}
+#output.elasticsearch:
+#  hosts: ["${ELASTICSEARCH_HOST}:9200"]
+#  username: ${ELASTICSEARCH_USERNAME}
+#  password: ${ELASTICSEARCH_PASSWORD}
 
 #output.console:
 #  pretty: true
+
+output.logstash:
+  hosts: ["${LOGSTASH_HOST}:5044"]
