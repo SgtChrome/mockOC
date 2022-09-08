@@ -5,6 +5,7 @@ import socket
 import os
 import logging
 from datetime import datetime
+import time
 from time import sleep
 import yaml
 
@@ -69,7 +70,7 @@ class MyUDPHandler(socketserver.BaseRequestHandler):
     def handle(self):
         data = self.request[0].strip()
         socket = self.request[1]
-        logging.info(datetime.now().strftime("%H:%M:%S-%f") + ' - ' + self.client_address[0] + ':' + data.decode("utf-8"))
+        logging.debug(datetime.now().strftime("%H:%M:%S-%f") + ' - ' + self.client_address[0] + ':' + data.decode("utf-8"))
         print(datetime.now().strftime("%H:%M:%S-%f") + ' - ' + self.client_address[0] + ': ' + data.decode("utf-8"))
         #sleep(3)
         received = data.decode("utf-8")
@@ -77,7 +78,7 @@ class MyUDPHandler(socketserver.BaseRequestHandler):
 
         cur_thread = threading.current_thread()
 
-        if (received[0] == 1):
+        """ if received[0] == '1':
             match received[2]:
                 case RASTA_CODES.RASTA_CONNECTION_UP:
                     inst.clients[received[1]].connection = True
@@ -87,9 +88,16 @@ class MyUDPHandler(socketserver.BaseRequestHandler):
                     for client in received[3].split('-')[:-1]:
                         data = client.split(',')
                         inst.clients[data[0]].connection = bool(data[1])
-                        print(client)
-        else:
-            orderID, message = received[3].split('-')
+                        print(client) """
+
+        if received[0] == '0':
+            orderID, answer, message = received[3].split('-')
+            if message == 'startup':
+                loop_thread = threading.Thread(target=loopMessages)
+                loop_thread.daemon = True
+                loop_thread.start()
+            logging.info(f'Epoch:{str(time.time())} - [Interlocking_RECEIVE]:{received[3]}')
+
 
         # socket.sendto(str.encode(message), (RASTAIP, RASTAPORT))
         # 0/1 Message/Internal; RastaID_Sender; RastaID_Receiver; orderId - message
@@ -101,12 +109,20 @@ class ThreadedUDPServer(socketserver.ThreadingMixIn, MyUDPHandler):
 def sendOrder(udpSocket, order):
     try:
         udpSocket.sendto(str.encode(order), (RASTAIP, RASTAPORT))
-        print("Send order:", order)
+        logging.info(f'Epoch:{str(time.time())} - [Interlocking_SENT]:{order}')
+        print(f'Epoch:{str(time.time())} - [Interlocking_SENT]:{order}')
     except socket.gaierror as err:
         if err.errno == -2:
             print("Rasta socket is down")
         else:
             print(err)
+
+def loopMessages():
+    while(True):
+        sendOrder(UDPClientSocket, "0;%s;%s;%s-left" % (inst.clients['interlocking'].rastaID, inst.clients['switch1'].rastaID, getOrderID()))
+        sleep(5)
+        sendOrder(UDPClientSocket, "0;%s;%s;%s-right" % (inst.clients['interlocking'].rastaID, inst.clients['switch1'].rastaID, getOrderID()))
+        sleep(5)
 
 if __name__ == "__main__":
     if not os.path.exists('internalConfig.yaml'):
@@ -131,12 +147,6 @@ if __name__ == "__main__":
 
     UDPClientSocket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
     #server_thread.join()
-
-    while(True):
-        sendOrder(UDPClientSocket, "0;%s;%s;%s-left" % (inst.clients['interlocking'].rastaID, inst.clients['switch1'].rastaID, getOrderID()))
-        sleep(5)
-        sendOrder(UDPClientSocket, "0;%s;%s;%s-right" % (inst.clients['interlocking'].rastaID, inst.clients['switch1'].rastaID, getOrderID()))
-        sleep(5)
 
     """ while(True):
         order = input('->')
