@@ -2,7 +2,7 @@ import socketserver
 import socket
 import logging
 from datetime import datetime
-from time import sleep
+from time import sleep, time
 import os
 
 RASTAIP, RASTAPORT = "sender_rasta", 20002
@@ -18,7 +18,7 @@ UDPSOCKET = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
 def sendMessage(rastaID, message):
     temp = ";".join(["0", ownid, str(int(rastaID, 16)), message])
     UDPSOCKET.sendto(str.encode(temp), (RASTAIP, RASTAPORT))
-    print("Sent message", temp)
+    logging.info(f"'Epoch:{str(time())} - [Client_SENT]:{temp}")
 
 
 class MyUDPHandler(socketserver.BaseRequestHandler):
@@ -32,25 +32,26 @@ class MyUDPHandler(socketserver.BaseRequestHandler):
     def handle(self):
         data = self.request[0].strip()
         socket = self.request[1]
-        logging.info(datetime.now().strftime("%H:%M:%S-%f") + ' - ' + self.client_address[0] + ':' + data.decode("utf-8"))
-        print(datetime.now().strftime("%H:%M:%S-%f") + ' - ' + self.client_address[0] + ':' + data.decode("utf-8"))
+        logging.debug(datetime.now().strftime("%H:%M:%S-%f") + ' - ' + self.client_address[0] + ':' + data.decode("utf-8"))
+        #print(datetime.now().strftime("%H:%M:%S-%f") + ' - ' + self.client_address[0] + ':' + data.decode("utf-8"))
 
         # 0/1 Message/Internal; RastaID_sender; RastaID_Receiver; message
         data = data.decode("utf-8").split(";")
 
-        if data[0] == '1':
+        if data[0] == '0':
+            logging.info(f"'Epoch:{str(time())} - [Client_RECEIVED]:{data}")
             orderID, message = data[3].split('-')
             match message:
                 case 'left':
-                    sendMessage(data[1], orderID + '-Received')
+                    sendMessage(data[1], orderID + '-Answer-Received')
                     sleep(SWITCHING_TIME)
-                    sendMessage(data[1], orderID + '-Position:left')
+                    sendMessage(data[1], orderID + '-Answer-Position:left')
                 case 'right':
-                    sendMessage(data[1], orderID + '-Received')
+                    sendMessage(data[1], orderID + '-Answer-Received')
                     sleep(SWITCHING_TIME)
-                    sendMessage(data[1], orderID + '-Position:right')
+                    sendMessage(data[1], orderID + '-Answer-Position:right')
                 case 'startup':
-                    sendMessage(data[1], 'startup-startup confirmed')
+                    sendMessage(data[1], orderID + '-Answer-startup confirmed')
 
 
 if __name__ == "__main__":
@@ -59,9 +60,12 @@ if __name__ == "__main__":
         exit()
     with open("id.cfg") as configFile:
         ownid = configFile.read()
-        print(ownid)
+        #print(ownid)
 
-    logging.basicConfig(filename='log.log', encoding='utf-8', level=logging.DEBUG)
+    logging.basicConfig(handlers=[
+            logging.FileHandler("log.log"),
+            logging.StreamHandler()
+        ], encoding='utf-8', level=logging.DEBUG)
     with socketserver.UDPServer((HOST, PORT), MyUDPHandler) as server:
         logging.info("'ObjectController' started!")
         print("'ObjectController' started!")
