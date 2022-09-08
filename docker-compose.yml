@@ -17,6 +17,8 @@ services:
     build:
       context: .
       dockerfile: ./${DOCKERFILE_OC:-DockerfileOCClient}
+    volumes:
+      - filebeatV:/usr/src/app/logs
     stdin_open: true
     tty: true
     environment:

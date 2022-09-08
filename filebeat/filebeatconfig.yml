@@ -1,12 +1,5 @@
 # https://github.com/elastic/beats/blob/master/filebeat/filebeat.reference.yml
 
-filebeat.modules:
-- module: system
-  syslog:
-    enabled: true
-  auth:
-    enabled: true
-
 filebeat.inputs:
 #- type: container
 #  enabled: true
@@ -30,13 +23,13 @@ filebeat.inputs:
 #      hints.enabled: true
 
 #================================ Processors ===================================
-processors:
-- add_cloud_metadata: ~
-- add_docker_metadata: ~
-- add_locale:
-    format: offset
-- add_host_metadata:
-    netinfo.enabled: true
+#processors:
+#- add_cloud_metadata: ~
+#- add_docker_metadata: ~
+#- add_locale:
+#    format: offset
+#- add_host_metadata:
+#    netinfo.enabled: true
 
 #========================== Elasticsearch output ===============================
 #output.elasticsearch:
