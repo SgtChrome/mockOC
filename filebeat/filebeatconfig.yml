@@ -7,10 +7,20 @@ filebeat.inputs:
 #    -/var/lib/docker/containers/*/*.log
 #  stream: all # can be all, stdout or stderr
 - type: filestream
-  id: filebeat-interlocking
+  id: filebeat-rasta
+  fields:
+    fileid: filebeat-rasta
   enabled: true
   paths:
-    - /usr/share/filebeat/data/*.log*
+    - /usr/share/filebeat/data/output.log*
+
+- type: filestream
+  id: filebeat-oc
+  fields:
+    fileid: filebeat-oc
+  enabled: true
+  paths:
+    - /usr/share/filebeat/data/OClog.log
 
 
 #========================== Filebeat autodiscover ==============================

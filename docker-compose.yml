@@ -49,6 +49,7 @@ services:
       - ELASTICSEARCH_USERNAME=${ELASTICSEARCH_USERNAME}
       - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD}
       - LOGSTASH_HOST=${LOGSTASH_HOST}
+      - DOCKERFILE_OC=${DOCKERFILE_OC:-DockerfileOCClient}
     # disable strict permission checks
     command: ["--strict.perms=false"]
 
