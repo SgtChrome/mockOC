@@ -56,6 +56,10 @@ class OC(RaSTA):
         self.state = None
 
 
+def getTimestamp():
+    return str(round(time.time(), 3)).replace(".", "")
+
+
 def getOrderID():
     return shortuuid.uuid()
 
@@ -70,11 +74,11 @@ class MyUDPHandler(socketserver.BaseRequestHandler):
     def handle(self):
         data = self.request[0].strip()
         socket = self.request[1]
-        logging.debug(datetime.now().strftime("%H:%M:%S-%f") + ' - ' + self.client_address[0] + ':' + data.decode("utf-8"))
+        #logging.debug(datetime.now().strftime("%H:%M:%S-%f") + ' - ' + self.client_address[0] + ':' + data.decode("utf-8"))
         print(datetime.now().strftime("%H:%M:%S-%f") + ' - ' + self.client_address[0] + ': ' + data.decode("utf-8"))
         #sleep(3)
-        received = data.decode("utf-8")
-        received.split(';')
+        data = data.decode("utf-8")
+        received = data.split(';')
 
         cur_thread = threading.current_thread()
 
@@ -91,12 +95,13 @@ class MyUDPHandler(socketserver.BaseRequestHandler):
                         print(client) """
 
         if received[0] == '0':
-            orderID, answer, message = received[3].split('-')
-            if message == 'startup':
+            print(received[3])
+            orderID, message = received[3].split('-')
+            if 'startup confirmed' in message:
                 loop_thread = threading.Thread(target=loopMessages)
                 loop_thread.daemon = True
                 loop_thread.start()
-            logging.info(f'Epoch:{str(time.time())} - [Interlocking_RECEIVE]:{received[3]}')
+            logging.info(f'Epoch:{getTimestamp()} - [Interlocking_RECEIVED]:{data}')
 
 
         # socket.sendto(str.encode(message), (RASTAIP, RASTAPORT))
@@ -109,8 +114,8 @@ class ThreadedUDPServer(socketserver.ThreadingMixIn, MyUDPHandler):
 def sendOrder(udpSocket, order):
     try:
         udpSocket.sendto(str.encode(order), (RASTAIP, RASTAPORT))
-        logging.info(f'Epoch:{str(time.time())} - [Interlocking_SENT]:{order}')
-        print(f'Epoch:{str(time.time())} - [Interlocking_SENT]:{order}')
+        logging.info(f'Epoch:{getTimestamp()} - [Interlocking_SENT]:{order}')
+        print(f'Epoch:{getTimestamp()} - [Interlocking_SENT]:{order}')
     except socket.gaierror as err:
         if err.errno == -2:
             print("Rasta socket is down")
@@ -125,6 +130,8 @@ def loopMessages():
         sleep(5)
 
 if __name__ == "__main__":
+    print(getTimestamp())
+
     if not os.path.exists('internalConfig.yaml'):
         print("No config file found")
         exit()
@@ -136,7 +143,10 @@ if __name__ == "__main__":
             print(exc)
 
     inst = Interlocking(config)
-    logging.basicConfig(filename='log.log', encoding='utf-8', level=logging.DEBUG)
+    logging.basicConfig(handlers=[
+            logging.FileHandler("logs/OClog.log"),
+            logging.StreamHandler()
+        ], encoding='utf-8', level=logging.DEBUG)
 
     receiver = socketserver.UDPServer((HOST, RECEIVERPORT), ThreadedUDPServer)
     server_thread = threading.Thread(target=receiver.serve_forever)
@@ -146,7 +156,7 @@ if __name__ == "__main__":
     print("Object controller up!")
 
     UDPClientSocket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
-    #server_thread.join()
+    server_thread.join()
 
     """ while(True):
         order = input('->')
