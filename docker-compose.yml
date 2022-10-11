@@ -1,6 +1,21 @@
 version: '3'
 
 services:
+  object_controller:
+    container_name: object_controller
+    build:
+      context: .
+      dockerfile: ./${DOCKERFILE_OC:-DockerfileOCClient}
+    ports:
+      - "20001:20001/udp"
+    volumes:
+      - filebeatV:/usr/src/app/logs
+    stdin_open: true
+    tty: true
+    environment:
+      - PYTHONUNBUFFERED=1
+      - REPETITIONS=${REPETITIONS:-100}
+
   sender_rasta:
     build:
       context: .
@@ -11,18 +26,6 @@ services:
     ports:
       - "8888:8888/udp"
       - "8889:8889/udp"
-
-  object_controller:
-    container_name: object_controller
-    build:
-      context: .
-      dockerfile: ./${DOCKERFILE_OC:-DockerfileOCClient}
-    volumes:
-      - filebeatV:/usr/src/app/logs
-    stdin_open: true
-    tty: true
-    environment:
-      - PYTHONUNBUFFERED=1
 
   # How to Tune Elastic Beats Performance: A Practical Example with Batch Size, Worker Count, and More
   # https://www.elastic.co/blog/how-to-tune-elastic-beats-performance-a-practical-example-with-batch-size-worker-count-and-more?blade=tw&hulk=social
