@@ -16,12 +16,12 @@ ownid = None
 UDPSOCKET = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
 
 def getTimestamp():
-    return str(round(time.time(), 3)).replace(".", "")
+    return str(round(time(), 3)).replace(".", "")
 
 def sendMessage(rastaID, message):
     temp = ";".join(["0", ownid, str(int(rastaID, 16)), message])
     UDPSOCKET.sendto(str.encode(temp), (RASTAIP, RASTAPORT))
-    logging.info(f'Epoch:{getTimestamp()} - [Client_SENT]:{temp}')
+    logging.info(f'Epoch:{getTimestamp()} - [Client_SENT] {temp}')
 
 
 class MyUDPHandler(socketserver.BaseRequestHandler):
@@ -43,7 +43,7 @@ class MyUDPHandler(socketserver.BaseRequestHandler):
 
         if dataArray[0] == '0':
             orderID, message = dataArray[3].split('-')
-            logging.info(f'Epoch:{getTimestamp()} - [Client_RECEIVED]:{data.decode("utf-8")}')
+            logging.info(f'Epoch:{getTimestamp()} - [Client_RECEIVED] {data.decode("utf-8")}')
             match message:
                 case 'left':
                     sendMessage(dataArray[1], orderID + '-Answer_Received')
