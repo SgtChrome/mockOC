@@ -1,7 +1,6 @@
 import socketserver
 import threading
 import socket
-import sys
 
 import os
 import logging
@@ -52,6 +51,7 @@ class RaSTA:
     def getHexID(self):
         return '#' + f'{self.rastaID:0>8x}'
 
+
 class Interlocking():
     def __init__(self, clients) -> None:
         self.clients = {k['name']:OC(k) for k in clients}
@@ -75,17 +75,16 @@ def getOrderID():
     return string
     #return shortuuid.uuid()
 
+
 class MyUDPHandler(socketserver.BaseRequestHandler):
 
     def handle(self):
         data = self.request[0].strip()
-        #socket = self.request[1]
+        # socket = self.request[1]
+        # socket.sendto(str.encode(message), (RASTAIP, RASTAPORT))
         print(datetime.now().strftime("%H:%M:%S-%f") + ' - ' + self.client_address[0] + ': ' + data.decode("utf-8"))
-        #sleep(3)
         data = data.decode("utf-8")
         received = data.split(';')
-
-        cur_thread = threading.current_thread()
 
         global countReceived, countSent, repetitions, expName, waittime, loopThread
 
@@ -119,9 +118,6 @@ class MyUDPHandler(socketserver.BaseRequestHandler):
         if countReceived == repetitions:
             print('Finished experiment with', repetitions, 'repetitions')
 
-        # socket.sendto(str.encode(message), (RASTAIP, RASTAPORT))
-        # 0/1 Message/Internal; RastaID_Sender; RastaID_Receiver; orderId - message
-
 
 class ThreadedUDPServer(socketserver.ThreadingMixIn, MyUDPHandler):
     pass
@@ -140,24 +136,13 @@ def sendOrder(udpSocket, order):
 def loopMessages():
     print("Repetitions:", repetitions)
     while(countSent < repetitions):
+        # 0/1 Message/Internal; RastaID_Sender; RastaID_Receiver; orderId - message
         sendOrder(UDPClientSocket, "0;%s;%s;%s-left" % (inst.clients['interlocking'].rastaID, inst.clients['switch1'].rastaID, getOrderID()))
         sleep(waittime)
         sendOrder(UDPClientSocket, "0;%s;%s;%s-right" % (inst.clients['interlocking'].rastaID, inst.clients['switch1'].rastaID, getOrderID()))
         sleep(waittime)
 
 if __name__ == "__main__":
-    """ if len(sys.argv) < 2:
-        pass
-    else:
-        #repetitions = int(sys.argv[1])
-        #print(f"Repetitions: {str(repetitions)}")
-        expName = sys.argv[1]
-        print(f"ExpName String: {expName}") """
-
-
-    """ expName = os.environ.get('EXP_NAME')
-    repetitions = int(os.environ.get('REPETITIONS')) if os.environ.get('REPETITIONS') else 10 """
-
     if not os.path.exists('internalConfig.yaml'):
         print("No config file found")
         exit()
