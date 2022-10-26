@@ -36,21 +36,14 @@ loopThread = threading.Thread()
 countReceived = 0
 countSent = 0
 
-
 class RaSTA:
-    def __init__(self, name, ID, ip) -> None:
+    """This is a rasta component"""
+    def __init__(self, name, ID, blueIP, greyIP) -> None:
         self.name = name
         self.rastaID = ID
-        self.ip = ip
+        self.blueIP = blueIP
+        self.greyIP = greyIP
         self.clients = []
-
-    def exportClientIPs(self):
-        return '{' + ';'.join(['"' + x.ip + '"' for x in self.clients]) + '}'
-    def exportClientIDs(self):
-        return '{' + ';'.join(['"' + str(x.rastaID) + '"' for x in self.clients]) + '}'
-    def getHexID(self):
-        return '#' + f'{self.rastaID:0>8x}'
-
 
 class Interlocking():
     def __init__(self, clients) -> None:
@@ -59,7 +52,7 @@ class Interlocking():
 
 class OC(RaSTA):
     def __init__(self, dicti) -> None:
-        super().__init__(dicti['name'], dicti['rastaID'], dicti['ip'])
+        super().__init__(dicti['name'], dicti['rastaID'], dicti['blueIP'], dicti['greyIP'])
         self.connection = False
         self.state = None
 
@@ -114,6 +107,8 @@ class MyUDPHandler(socketserver.BaseRequestHandler):
 
         elif received[0] == '2':
             exit()
+
+        #print('Repetitions', countReceived, repetitions)
 
         if countReceived == repetitions:
             print('Finished experiment with', repetitions, 'repetitions')
