@@ -2,9 +2,9 @@ FROM python:3-slim
 
 WORKDIR /usr/src/app
 
-#COPY requirements.txt ./
+COPY interlocking/requirements.txt .
+COPY interlocking/interlocking.py .
 
-COPY object-controller/ .
 # --no-cache-dir
 RUN pip install -r requirements.txt
 
