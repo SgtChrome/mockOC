@@ -9,12 +9,9 @@ services:
     ports:
       - "20001:20001/udp"
     volumes:
-      - filebeatV:/usr/src/app/logs
+      - filebeatV:/usr/src/app/log
     stdin_open: true
     tty: true
-    environment:
-      - PYTHONUNBUFFERED=1
-      - REPETITIONS=${REPETITIONS:-100}
 
   sender_rasta:
     build:

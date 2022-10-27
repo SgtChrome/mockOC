@@ -1,12 +1,7 @@
-FROM python:3-slim
+FROM alpine:3.16.0 AS runtime
 
-WORKDIR /usr/src/app
+WORKDIR /usr/src/app/
+COPY /vagrant/mockOC/object-controller/OCRust /usr/src/app/
 
-#COPY requirements.txt ./
-
-COPY object-controller/ .
-# --no-cache-dir
-RUN pip install -r requirements.txt
-
-CMD [ "python", "-u", "./socketServer.py" ]
-#CMD tail -f /dev/null
+# Run the application
+CMD /usr/src/app/OCRust

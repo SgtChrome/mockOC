@@ -1,2 +1,3 @@
-internalConfig.yaml
+*.yaml
 id.cfg
+OCRust

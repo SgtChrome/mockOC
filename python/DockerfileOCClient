@@ -8,7 +8,5 @@ COPY object-controller/ .
 # --no-cache-dir
 RUN pip install -r requirements.txt
 
-#CMD [ "python", "-u", "./socketServerInterlocking.py" ]
-#CMD [ "python", "-u", "./interlockingExperiment.py" ]
-CMD [ "python", "-u", "./interlocking.py" ]
+CMD [ "python", "-u", "./socketServer.py" ]
 #CMD tail -f /dev/null

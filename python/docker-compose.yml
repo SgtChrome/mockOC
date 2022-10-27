@@ -1,0 +1,60 @@
+version: '3'
+
+services:
+  object_controller:
+    container_name: object_controller
+    build:
+      context: .
+      dockerfile: ./${DOCKERFILE_OC:-DockerfileOCClient}
+    ports:
+      - "20001:20001/udp"
+    volumes:
+      - filebeatV:/usr/src/app/logs
+    stdin_open: true
+    tty: true
+    environment:
+      - PYTHONUNBUFFERED=1
+      - REPETITIONS=${REPETITIONS:-100}
+
+  sender_rasta:
+    build:
+      context: .
+      dockerfile: ./${DOCKERFILE_RASTA:-DockerfileRastaClient}
+    container_name: sender_rasta
+    volumes:
+      - filebeatV:/usr/src/app/CRasta/logs
+    ports:
+      - "8888:8888/udp"
+      - "8889:8889/udp"
+
+  # How to Tune Elastic Beats Performance: A Practical Example with Batch Size, Worker Count, and More
+  # https://www.elastic.co/blog/how-to-tune-elastic-beats-performance-a-practical-example-with-batch-size-worker-count-and-more?blade=tw&hulk=social
+  filebeat:
+    container_name: filebeat
+    image: docker.elastic.co/beats/filebeat:${ELASTIC_VERSION}
+    # https://github.com/docker/swarmkit/issues/1951
+    #hostname: "{{.Node.Hostname}}-filebeat"
+    # Need to override user so we can access the log files, and docker.sock
+    user: root
+    volumes:
+      - /home/vagrant/mockOC/filebeat/filebeatconfig.yml:/usr/share/filebeat/filebeat.yml
+      - filebeatV:/usr/share/filebeat/data
+      - /var/run/docker.sock:/var/run/docker.sock
+      # This is needed for filebeat to load container log path as specified in filebeat.yml
+      - /var/lib/docker/containers/:/var/lib/docker/containers/:ro
+
+      # This is needed for filebeat to load logs for system and auth modules
+      - /var/log/:/var/log/:ro
+
+    environment:
+      - ELASTICSEARCH_HOST=${ELASTICSEARCH_HOST}
+      #- KIBANA_HOST=${KIBANA_HOST:}
+      - ELASTICSEARCH_USERNAME=${ELASTICSEARCH_USERNAME}
+      - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD}
+      - LOGSTASH_HOST=${LOGSTASH_HOST}
+      - DOCKERFILE_OC=${DOCKERFILE_OC:-DockerfileOCClient}
+    # disable strict permission checks
+    command: ["--strict.perms=false"]
+
+volumes:
+  filebeatV:
