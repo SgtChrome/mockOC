@@ -7,6 +7,7 @@ import logging
 from datetime import datetime
 import time
 from time import sleep
+from typing import Dict
 import yaml
 
 import shortuuid
@@ -50,35 +51,40 @@ class Telegram:
         # Message types SCI_LS
         'INDICATE_SIGNAL_ASPECT': '0x0001',
     }
-    def __init__(self) -> None:
-        pass
-
-    def getOrderIDBytes(self):
-        expNameBytes = getOrderID().encode('utf-8')
-        expNameLength = len(expNameBytes).to_bytes(2, byteorder='little')
-        return expNameLength + expNameBytes
-
-    @staticmethod
-    def getTelegram(kind, receiver, sender, data) -> None:
-        protocoltype = int('0x40', 16)
-        messagetype = int(Telegram.translate[kind], 16).to_bytes(2, byteorder='little')
-        receiver = receiver.to_bytes(20, byteorder='little')
-        sender = sender.to_bytes(20, byteorder='little')
+    def __init__(self, kind, receiver, sender, data) -> None:
+        self.protocoltype = int('0x40', 16)
+        self.messagetype = int(Telegram.translate[kind], 16)
+        self.receiver = receiver
+        self.sender = sender
         # data is always 1 byte for both SCI_P and SCI_LS
-        data = data.to_bytes(1, byteorder='little')
-        orderID = Telegram.getOrderIDBytes()
-        return bytearray([protocoltype]) + messagetype + receiver + sender + data + orderID
+        self.data = data
+        self.orderID = getOrderID()
+
+    def getOrderIDBytes():
+        expNameBytes = getOrderID()
+        #expNameLength = len(expNameBytes).to_bytes(2, byteorder='little')
+        return expNameBytes
+
+    def toBytes(self) -> None:
+        protocoltype = self.protocoltype
+        messagetype = self.messagetype .to_bytes(2, byteorder='little')
+        receiver = (self.receiver + 48).to_bytes(20, byteorder='little')
+        sender = (self.sender + 48).to_bytes(20, byteorder='little')
+        # data is always 1 byte for both SCI_P and SCI_LS
+        data = self.data.to_bytes(1, byteorder='little')
+        pufferbyte = int('0x00', 16).to_bytes(1, byteorder='little')
+        orderID = self.orderID.encode('utf-8')
+        return bytearray([protocoltype]) + messagetype + receiver + sender + data + pufferbyte + orderID
 
 class TelegramParser:
     def __init__(self, telegram):
         self.telegram = telegram
-        self.protocoltype = hex(telegram[0])
-        self.messagetype = hex(int.from_bytes(telegram[1:3], byteorder='little'))
-        self.receiver = int.from_bytes(telegram[3:23], byteorder='little')
-        self.sender = int.from_bytes(telegram[23:43], byteorder='little')
+        # rust sends +48 too much right now
+        self.protocoltype = telegram[0] - 48
+        self.messagetype = int.from_bytes(telegram[1:3], byteorder='little')
+        self.receiver = int.from_bytes(telegram[3:23], byteorder='little') - 48
+        self.sender = int.from_bytes(telegram[23:43], byteorder='little') - 48
         self.orderID = None
-
-        self.parsePayload()
 
     def parsePayload(self):
         pass
@@ -89,6 +95,7 @@ class SCI_P(TelegramParser):
         super().__init__(telegram)
         self.reportedPointPosition = None
         self.degradedPointPosition = None
+        self.parsePayload()
 
     def parsePayload(self):
         if self.messagetype == 0x000B:
@@ -101,6 +108,7 @@ class SCI_LS(TelegramParser):
     def __init__(self, telegram):
         super().__init__(telegram)
         self.signalAspect = None
+        self.parsePayload()
 
     def parsePayload(self):
         if self.messagetype == 0x0001:
@@ -113,8 +121,9 @@ class Interlocking():
     def __init__(self, clients, routes) -> None:
         self.interlocking = list(filter(lambda client: client['kind'] == "interlocking", clients))[0]
         clients.remove(self.interlocking)
-        self.clients = {k['name']:OC(k) for k in clients}
-        self.routes = routes
+        self.interlocking = RaSTA(self.interlocking)
+        self.clients: dict[str, OC] = {k['name']:OC(k) for k in clients}
+        self.routes = {list(k.keys())[0]:list(k.values())[0] for k in routes}
         self.currentRoute = None
 
     def setRoute(self, route):
@@ -126,69 +135,83 @@ class Interlocking():
         for elem, val in self.routes[route].items():
             # so elems can either be switch or signal
             # if elem is a signal that needs to be set to green (4) we have to wait
-            if elem.kind == "signal" and val == 4:
+            if self.clients[elem].kind == "signal" and val == 4:
                 continue
-            sendOrder(Telegram.getTelegram(orderType[elem.kind], self.clients[elem].rastaID, self.interlocking.rastaID, val))
+            sendOrder(Telegram(orderType[self.clients[elem].kind], self.clients[elem].rastaID, self.interlocking.rastaID, val), route + str(routesSet))
+            logging.debug(f"Sent order to {elem} to set to {val}")
 
     def receiveTelegram(self, telegram):
         # receive the telegram and set the state of the client
-        name = next((x for x in self.clients.values() if x.rastaID == telegram.sender), None)
+        elem = next((x for x in self.clients.values() if x.rastaID == telegram.sender), None)
+
         if type(telegram) == SCI_P:
-            self.clients[name].state = telegram.reportedPointPosition
+            self.clients[elem.name].state = telegram.reportedPointPosition
         elif type(telegram) == SCI_LS:
-            self.clients[name].state = telegram.signalAspect
+            self.clients[elem.name].state = telegram.signalAspect
             # CONFIG: this is the loop
             # if the route has been completed, finish the experiment or start the next route
-            if any(self.clients[elem].state != val for elem, val in self.routes[self.currentRoute].items()):
+            if all(self.clients[elem].state == val for elem, val in self.routes[self.currentRoute].items()):
+                logging.debug(f"Route {self.currentRoute} completed")
+                for signal in filter(lambda x: self.checkIfGreen(x[0]), self.clients.items()):
+                    sendOrder(Telegram('INDICATE_SIGNAL_ASPECT', signal.rastaID, self.interlocking.rastaID, 1), 'reset')
                 # if the signal is green we can set the other route
                 routesSet += 1
                 if routesSet < repetitions:
-                    self.setRoute(self.routes.keys().filter(lambda x: x != self.currentRoute)[0])
+                    newRoute = filter(lambda x: x != self.currentRoute, self.routes.keys())[0]
+                    logging.debug(f"Finished route {routesSet}, starting next route {newRoute}")
+                    self.setRoute(newRoute)
                 else:
                     # notify master about finished experiment
-                    pass
+                    print("Finished experiment")
                 return
         # check if all elements for the current route are set
         if self.checkIfRouteIsSet():
-            for signal in self.routes[self.currentRoute].items().filter(lambda x: x.kind == "signal" and x.state == 4):
-                sendOrder(Telegram.getTelegram('INDICATE_SIGNAL_ASPECT', signal.rastaID, self.interlocking.rastaID, 4))
+            logging.debug(f"Route {self.currentRoute} is set, setting signals to green")
+            for signal in filter(lambda x: self.checkIfGreen(x[0]), self.routes[self.currentRoute].items()):
+                sendOrder(Telegram('INDICATE_SIGNAL_ASPECT', signal.rastaID, self.interlocking.rastaID, 4), self.currentRoute + str(routesSet))
 
     def checkIfRouteIsSet(self):
         # check if all elements for the current route are set
         # except for the signals that are supposed to be green
-        if any(self.clients[elem].state != val for elem, val in self.routes[self.currentRoute].items().filter(lambda elem: not (elem[1].kind == "signal" and elem[0].state == 4))):
+        if any(self.clients[elem].state != val for elem, val in filter(lambda x: not self.checkIfGreen(x[0]), self.routes[self.currentRoute].items())):
             return False
         else:
             return True
 
+    def checkIfGreen(self, name):
+        return self.clients[name].kind == "signal" and self.clients[name].state == 4
+
     def loop(self):
+        logging.debug("Interlocking waiting for start of experiment")
         while True:
             interlockingEvent.wait()
-            self.setRoute(self.routes.values()[0])
+            self.setRoute(list(self.routes)[0])
             interlockingEvent.clear()
+            logging.debug("Interlocking waiting for start of experiment")
 
 
-def loop(self):
+""" def loop(self):
     while routesSet < repetitions:
         self.setRoute(self.currentRoute)
         time.sleep(waittime)
         self.setRoute(self.currentRoute)
-        time.sleep(waittime)
+        time.sleep(waittime) """
 
 
 class RaSTA:
     """This is a rasta component"""
-    def __init__(self, name, ID, blueIP, greyIP) -> None:
-        self.name = name
-        self.rastaID = ID
-        self.blueIP = blueIP
-        self.greyIP = greyIP
+    def __init__(self, elemConfig) -> None:
+        self.name = elemConfig['name']
+        self.rastaID = elemConfig['rastaID']
+        self.blueIP = elemConfig['blueIP']
+        self.greyIP = elemConfig['greyIP']
+        self.kind = elemConfig['kind']
         self.clients = []
 
 
 class OC(RaSTA):
-    def __init__(self, dicti) -> None:
-        super().__init__(dicti['name'], dicti['rastaID'], dicti['blueIP'], dicti['greyIP'])
+    def __init__(self, elemConfig) -> None:
+        super().__init__(elemConfig)
         self.connection = False
         self.state = None
 
@@ -205,28 +228,32 @@ def getOrderID():
     #return shortuuid.uuid()
 
 
-def handleTelegram(telegram):
-    logging.info(f'Epoch:{getTimestamp()} - [Interlocking_RECEIVED]{telegram.orderID}')
-    interlockingMutex.acquire()
-    inst.receiveTelegram(telegram)
-    interlockingMutex.release()
-
-
 class MyUDPHandler(socketserver.BaseRequestHandler):
 
     def handle(self):
         data = self.request[0].strip()
-        print(datetime.now().strftime("%H:%M:%S-%f") + ' - ' + self.client_address[0] + ': ' + data)
+        #print(datetime.now().strftime("%H:%M:%S-%f") + ' - ' + self.client_address[0] + ': ' + str(data))
         if data[0] == 0x30:
-            self.handleTelegram(SCI_LS(data))
+            logging.debug(f"Received SCI_LS from {self.client_address[0]}")
+            telegram = SCI_LS(data)
+            logging.info(f'Epoch:{getTimestamp()} - [Interlocking_RECEIVED][{telegram.messagetype}][{telegram.signalAspect}]{telegram.orderID}')
+            interlockingMutex.acquire()
+            inst.receiveTelegram(telegram)
+            interlockingMutex.release()
         elif data[0] == 0x40:
-            self.handleTelegram(SCI_P(data))
+            logging.debug(f"Received SCI_P from {self.client_address[0]}")
+            telegram = SCI_P(data)
+            logging.info(f'Epoch:{getTimestamp()} - [Interlocking_RECEIVED][{telegram.messagetype}][{telegram.reportedPointPosition}]{telegram.orderID}')
+            interlockingMutex.acquire()
+            inst.receiveTelegram(telegram)
+            interlockingMutex.release()
 
         elif data[0] == 0x03:
             global routesSet, repetitions, expName, waittime, interlockingEvent
-            print('Received experiment start', )
+            logging.debug("Starting experiment")
             routesSet = 0
             repetitions = int.from_bytes(data[1:3], byteorder='little')
+            # get waittime in milliseconds
             waittime = int.from_bytes(data[3:5], byteorder='little') / 1000
             expName = bytes(data[5:]).decode('utf-8')
 
@@ -239,11 +266,11 @@ class MyUDPHandler(socketserver.BaseRequestHandler):
 class ThreadedUDPServer(socketserver.ThreadingMixIn, MyUDPHandler):
     pass
 
-def sendOrder(order):
+def sendOrder(telegram: Telegram, routesID:str):
     try:
-        UDPClientSocket.sendto(str.encode(order), (RASTAIP, RASTAPORT))
-        logging.info(f'Epoch:{getTimestamp()}-[STEP1]{order}')
-        #print(f'Epoch:{getTimestamp()} - [Interlocking_SENT]:{order}')
+        UDPClientSocket.sendto(telegram.toBytes() + '+'+ routesID.encode('utf-8'), (RASTAIP, RASTAPORT))
+        logging.info(f'Epoch:{getTimestamp()}-[INTERLOCKING_SENT][{telegram.messagetype}][{telegram.data}]{telegram.orderID}+{routesID}')
+        print(f'Epoch:{getTimestamp()} - [Interlocking_SENT]:{telegram.toBytes()+routesID}')
     except socket.gaierror as err:
         if err.errno == -2:
             print("Rasta socket is down")
@@ -261,7 +288,7 @@ def loopMessages():
 
 if __name__ == "__main__":
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    print(os.path.dirname(os.path.abspath(__file__)))
+
     if not os.path.exists('internalConfig.yaml'):
         print("No config file found")
         exit()
@@ -289,10 +316,16 @@ if __name__ == "__main__":
     interlockingThread.daemon = True
     interlockingThread.start()
 
-    logging.basicConfig(handlers=[
+    logging.root.handlers = []
+
+    logging.basicConfig(
+        handlers=[
             #logging.FileHandler("logs/OClog.log"),
             logging.StreamHandler()
-        ], encoding='utf-8', level=logging.DEBUG)
+        ],
+        encoding='utf-8',
+        level=logging.DEBUG)
+    logging.debug("Logging setup properly")
 
     #countLock = threading.Lock()
     UDPClientSocket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
@@ -303,5 +336,16 @@ if __name__ == "__main__":
     server_thread.start()
 
     print("Object controller up!")
+
+    # TEST
+    """ sleep(2)
+    data = b"\x032\x00,\x010*0*0*300"
+    routesSet = 0
+    repetitions = int.from_bytes(data[1:3], byteorder='little')
+    # get waittime in milliseconds
+    waittime = int.from_bytes(data[3:5], byteorder='little') / 1000
+    expName = bytes(data[5:]).decode('utf-8')
+
+    interlockingEvent.set() """
 
     server_thread.join()
