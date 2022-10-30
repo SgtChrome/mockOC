@@ -1,7 +1,6 @@
-FROM alpine:3.16.0 AS runtime
+FROM alpine:3.16.0
 
 WORKDIR /usr/src/app/
-COPY /vagrant/mockOC/object-controller/OCRust /usr/src/app/
-
+COPY object-controller/ .
 # Run the application
 CMD /usr/src/app/OCRust
