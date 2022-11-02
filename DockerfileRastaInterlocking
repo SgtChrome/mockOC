@@ -1,4 +1,4 @@
-FROM ubuntu:jammy
+FROM frolvlad/alpine-glibc:latest
 
 WORKDIR /usr/src/app
 
