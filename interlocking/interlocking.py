@@ -14,6 +14,7 @@ import shortuuid
 
 RASTAIP, RASTAPORT = "sender_rasta", 20002
 HOST, RECEIVERPORT = "object_controller", 20001
+EXPERIMENT_HOST, EXPERIMENT_HOST_PORT = "10.0.2.2", 20000
 #RASTAIP, RASTAPORT = "localhost", 20002
 #HOST, RECEIVERPORT = "localhost", 20001
 
@@ -35,7 +36,6 @@ waittime = 1
 inst = None
 interlockingMutex = threading.Lock()
 interlockingEvent = threading.Event()
-loopThread = threading.Thread()
 countReceived = 0
 routesSet = 0
 
@@ -68,8 +68,8 @@ class Telegram:
     def toBytes(self) -> None:
         protocoltype = self.protocoltype
         messagetype = self.messagetype .to_bytes(2, byteorder='little')
-        receiver = (self.receiver + 48).to_bytes(20, byteorder='little')
-        sender = (self.sender + 48).to_bytes(20, byteorder='little')
+        receiver = self.receiver.to_bytes(20, byteorder='little')
+        sender = self.sender.to_bytes(20, byteorder='little')
         # data is always 1 byte for both SCI_P and SCI_LS
         data = self.data.to_bytes(1, byteorder='little')
         pufferbyte = int('0x00', 16).to_bytes(1, byteorder='little')
@@ -81,9 +81,8 @@ class TelegramParser:
         self.telegram = telegram
         self.protocoltype = telegram[0]
         self.messagetype = int.from_bytes(telegram[1:3], byteorder='little')
-        # rust sends +48 too much right now
-        self.receiver = int.from_bytes(telegram[3:23], byteorder='little') - 48
-        self.sender = int.from_bytes(telegram[23:43], byteorder='little') - 48
+        self.receiver = int.from_bytes(telegram[3:23], byteorder='little')
+        self.sender = int.from_bytes(telegram[23:43], byteorder='little')
         self.orderID = None
 
     def parsePayload(self):
@@ -165,9 +164,13 @@ class Interlocking():
                     # Avoid sending the reset by just not caring about the state of the signal
                     # just resetting it in memory
                     # sendOrder(Telegram('INDICATE_SIGNAL_ASPECT', signal.rastaID, self.interlocking.rastaID, 1), 'reset')
+
                 # if the signal is green we can set the other route
+                global routeID
                 routesSet += 1
+                routeID = shortuuid.uuid()
                 print(f"{routesSet} out of {repetitions} routes done!")
+                UDPClientSocket.sendto(f"progress;{routesSet};{repetitions}".encode('utf-8'), (EXPERIMENT_HOST, EXPERIMENT_HOST_PORT))
                 if routesSet < repetitions:
                     newRoute = list(filter(lambda x: x != self.currentRoute, self.routes.keys()))[0]
                     logging.debug(f"Finished route {routesSet}, starting next route {newRoute}")
@@ -175,6 +178,7 @@ class Interlocking():
                 else:
                     # notify master about finished experiment
                     print("Finished experiment")
+                    UDPClientSocket.sendto("Finished experiment".encode('utf-8'), (EXPERIMENT_HOST, EXPERIMENT_HOST_PORT))
                 return
         if not self.green:
             self.checkIfRouteIsSet()
@@ -236,8 +240,8 @@ def getTimestamp():
 
 
 def getOrderID():
-    global routesSet, expName
-    string = f"{expName}+{str(routesSet)}+{shortuuid.uuid()}"
+    global routesSet, expName, routeID
+    string = f"{expName}+{str(routesSet)}+{routeID}"
     return string
     #return shortuuid.uuid()
 
@@ -253,31 +257,39 @@ class MyUDPHandler(socketserver.BaseRequestHandler):
             if 'reset' in telegram.orderID:
                 # ignore reset confirmation telegrams
                 return
-            logging.info(f'Epoch:{getTimestamp()} - [Interlocking_RECEIVED][{telegram.protocoltype}][{telegram.messagetype}][{telegram.signalAspect}]{telegram.orderID}')
+            logging.info(f'[INTERLOCKING_RECEIVED][{telegram.protocoltype}][{telegram.messagetype}][{telegram.signalAspect}]{telegram.orderID}')
             interlockingMutex.acquire()
             inst.receiveTelegram(telegram)
             interlockingMutex.release()
         elif data[0] == 0x40:
             logging.debug(f"Received SCI_P from {self.client_address[0]}")
             telegram = SCI_P(data)
-            logging.info(f'Epoch:{getTimestamp()} - [Interlocking_RECEIVED][{telegram.protocoltype}][{telegram.messagetype}][{telegram.reportedPointPosition}]{telegram.orderID}')
+            logging.info(f'[INTERLOCKING_RECEIVED][{telegram.protocoltype}][{telegram.messagetype}][{telegram.reportedPointPosition}]{telegram.orderID}')
             interlockingMutex.acquire()
             inst.receiveTelegram(telegram)
             interlockingMutex.release()
 
-        elif data[0] == 0x03:
+        elif data.split(b";")[0] == b'4':
+            exit()
+
+        elif data.split(b';')[0] == b'3':
             global routesSet, repetitions, expName, waittime, interlockingEvent
+            if routesSet < repetitions - 1:
+                # experiment must have been restarted
+                sleep((waittime / 1000) + 2)
             logging.debug("Starting experiment")
             routesSet = 0
-            repetitions = int.from_bytes(data[1:3], byteorder='little')
-            # get waittime in milliseconds
-            waittime = int.from_bytes(data[3:5], byteorder='little') / 1000
-            expName = bytes(data[5:]).decode('utf-8')
+            data = data.decode('utf-8').split(";")
+            repetitions = int(data[1])
+            waittime = int(data[2])
+            expName = data[3]
 
+            print("Experiment settings:", repetitions, waittime, expName)
             interlockingEvent.set()
 
-        elif data[0] == 0x04:
-            exit()
+        elif data.decode('utf-8').split(";")[0] == "connection":
+            logging.info(data)
+            UDPClientSocket.sendto(data, (EXPERIMENT_HOST, EXPERIMENT_HOST_PORT))
 
 
 class ThreadedUDPServer(socketserver.ThreadingMixIn, MyUDPHandler):
@@ -286,22 +298,22 @@ class ThreadedUDPServer(socketserver.ThreadingMixIn, MyUDPHandler):
 def sendOrder(telegram: Telegram, routesID:str):
     try:
         UDPClientSocket.sendto(telegram.toBytes() + '+'.encode('utf-8') + routesID.encode('utf-8'), (RASTAIP, RASTAPORT))
-        logging.info(f'Epoch:{getTimestamp()}-[INTERLOCKING_SENT][{telegram.protocoltype}][{telegram.messagetype}][{telegram.data}]{telegram.orderID}+{routesID}')
-        #print(f'Epoch:{getTimestamp()} - [Interlocking_SENT]:{telegram.toBytes() + routesID}')
+        logging.info(f'[INTERLOCKING_SENT][{telegram.protocoltype}][{telegram.messagetype}][{telegram.data}]{telegram.orderID}+{routesID}')
+        #print(f"Epoch:{getTimestamp()} - [Interlocking_SENT]:{telegram.toBytes() + '+'.encode('utf-8') + routesID.encode('utf-8')}")
     except socket.gaierror as err:
         if err.errno == -2:
             print("Rasta socket is down")
         else:
             print(err)
 
-def loopMessages():
+""" def loopMessages():
     print("Repetitions:", repetitions)
     while(routesSet < repetitions):
         # 0/1 Message/Internal; RastaID_Sender; RastaID_Receiver; orderId - message
         sendOrder("0;%s;%s;%s-left" % (inst.clients['interlocking'].rastaID, inst.clients['switch1'].rastaID, getOrderID()))
         sleep(waittime)
         sendOrder("0;%s;%s;%s-right" % (inst.clients['interlocking'].rastaID, inst.clients['switch1'].rastaID, getOrderID()))
-        sleep(waittime)
+        sleep(waittime) """
 
 if __name__ == "__main__":
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
@@ -338,7 +350,7 @@ if __name__ == "__main__":
     logging.basicConfig(
         format="Interlocking:%(created)f%(msecs)03d:%(message)s",
         handlers=[
-            #logging.FileHandler("logs/OClog.log"),
+            logging.FileHandler("logs/OClog.log"),
             logging.StreamHandler()
         ],
         encoding='utf-8',
@@ -353,16 +365,18 @@ if __name__ == "__main__":
     server_thread.daemon = True
     server_thread.start()
 
+    global routeID
+    routeID = shortuuid.uuid()
+
     print("Object controller up!")
 
     # TEST
-    """ sleep(4)
-    data = b"\x03\x05\x00\x03\x00test"
-    routesSet = 0
-    repetitions = int.from_bytes(data[1:3], byteorder='little')
-    # get waittime in milliseconds
-    waittime = int.from_bytes(data[3:5], byteorder='little') / 1000
-    expName = bytes(data[5:]).decode('utf-8')
+    """sleep(3)
+    data = "3;30;500;0*0*0*500"
+    data = data.split(";")
+    repetitions = int(data[1])
+    waittime = int(data[2])
+    expName = data[3]
 
     print(repetitions, waittime, expName)
 
