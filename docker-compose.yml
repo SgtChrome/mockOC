@@ -9,7 +9,7 @@ services:
     ports:
       - "20001:20001/udp"
     volumes:
-      - filebeatV:/usr/src/app/log
+      - ./logs:/usr/src/app/logs
     stdin_open: true
     tty: true
 
@@ -19,10 +19,9 @@ services:
       dockerfile: ./${DOCKERFILE_RASTA:-DockerfileRastaClient}
     container_name: sender_rasta
     volumes:
-      - filebeatV:/usr/src/app/CRasta/logs
+      - ./logs:/usr/src/app/CRasta/logs
     ports:
       - "8888:8888/udp"
       - "8889:8889/udp"
-
-volumes:
-  filebeatV:
+    stdin_open: true
+    tty: true

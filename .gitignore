@@ -1,5 +1,5 @@
 *.yaml
-*.log
+*.log*
 id.cfg
 OCRust
 rasta_client.cfg
